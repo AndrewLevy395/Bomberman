@@ -1,6 +1,6 @@
 # This is necessary to find the main code
 import sys
-
+import random
 sys.path.insert(0, '../bomberman')
 # Import necessary stuff
 from entity import CharacterEntity
@@ -57,10 +57,10 @@ class TestCharacter(CharacterEntity):
         cells = []
         # Go through neighboring cells
         for dx in [-1, 0, 1]:
-            # Avoid out-of-bounds access
+            # check bounds
             if (node[0] + dx >= 0) and (node[0] + dx < wrld.width()):
                 for dy in [-1, 0, 1]:
-                    # Avoid out-of-bounds access
+                    # check bounds
                     if (node[1] + dy >= 0) and (node[1] + dy < wrld.height()):
                         # Is this cell safe?
                         if wrld.exit_at(node[0] + dx, node[1] + dy) or wrld.empty_at(node[0] + dx, node[1] + dy):
@@ -111,13 +111,13 @@ class TestCharacter(CharacterEntity):
             while came_from[next] is not None:
                 self.set_cell_color(next[0], next[1], Fore.RED + Back.RED)
                 if came_from[next] == start:
-                    return next, "has path to exit"  # next move from start to in the A* path
+                    return next, "EXIT FOUND!"
                 next = came_from[next]
 
         while came_from[min_to_exit] is not None:
             self.set_cell_color(min_to_exit[0], min_to_exit[1], Fore.RED + Back.RED)
             if came_from[min_to_exit] == start:
-                return min_to_exit, "no path to exit"  # next move from start to in the A* path
+                return min_to_exit, "NO EXIT FOUND"
             min_to_exit = came_from[min_to_exit]
 
         # goal can not be reached
@@ -126,51 +126,48 @@ class TestCharacter(CharacterEntity):
 
     # Return the coordinates of the next node to go through
     def expectimax_argmax(self, wrld, depth):
-        # go through the event list to see if the wrld is terminated
-        # Event.tpe: the type of the event. It is one of Event.BOMB_HIT_WALL,
-        # Event.BOMB_HIT_MONSTER, Event.BOMB_HIT_CHARACTER,
-        # Event.CHARACTER_KILLED_BY_MONSTER, Event.CHARACTER_FOUND_EXIT.
         action = (0, 0)
         maximum = -infinity
 
-        c = next(iter(wrld.characters.values()))  # get the character position in the wrld
-        c = c[0]
+        bomberman = next(iter(wrld.characters.values()))  # get the character position in the wrld
+        bomberman = bomberman[0]
 
-        mlist = wrld.monsters.values()
+        monster_list = wrld.monsters.values()
 
-        noMonster = 0
-        if len(mlist) == 0:
-            noMonster = 1
-        elif len(mlist) == 1:
-            monster = next(iter(mlist))[0]
+        no_monster = 0
+        if len(monster_list) == 0:
+            no_monster = 1
+        elif len(monster_list) == 1:
+            monster = next(iter(monster_list))[0]
         else:
-            m1 = next(iter(mlist))[0]
-            m2 = next(iter(mlist))[0]
-            if max(m1.x - c.x, m1.y - c.y) > max(m2.x - c.x, m2.y - c.y):
-                monster = m2  # m2 is closer to c
+            # check which monster is closer
+            monster1 = next(iter(monster_list))[0]
+            monster2 = next(iter(monster_list))[0]
+            if max(monster1.x - bomberman.x, monster1.y - bomberman.y) > max(monster2.x - bomberman.x, monster2.y - bomberman.y):
+                monster = monster2
             else:
-                monster = m1  # m1 is closer to c
+                monster = monster1
 
         # Go through the possible 9-moves of the character
         # Loop through delta x
-        for dx_c in [-1, 0, 1]:
+        for bomberman_dx in [-1, 0, 1]:
             # Avoid out-of-bound indexing
-            if (c.x + dx_c >= 0) and (c.x + dx_c < wrld.width()):
+            if (bomberman.x + bomberman_dx >= 0) and (bomberman.x + bomberman_dx < wrld.width()):
                 # Loop through delta y
-                for dy_c in [-1, 0, 1]:
+                for bomberman_dy in [-1, 0, 1]:
                     # Avoid out-of-bound indexing
-                    if (c.y + dy_c >= 0) and (c.y + dy_c < wrld.height()):
+                    if (bomberman.y + bomberman_dy >= 0) and (bomberman.y + bomberman_dy < wrld.height()):
                         # No need to check impossible moves
-                        if not wrld.wall_at(c.x + dx_c, c.y + dy_c):
+                        if not wrld.wall_at(bomberman.x + bomberman_dx, bomberman.y + bomberman_dy):
                             # Set move in wrld
-                            c.move(dx_c, dy_c)
-                            if noMonster:
+                            bomberman.move(bomberman_dx, bomberman_dy)
+                            if no_monster:
                                 (new_wrld, new_events) = wrld.next()
-                                dist_to_best = self.manhattan_dist((c.x + dx_c, c.y + dy_c), self.bestmove)
+                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.bestmove)
                                 expected_value = self.expectimax_event_value(new_wrld, new_events, depth + 1)
                                 expected_value -= dist_to_best
                                 if expected_value > maximum:
-                                    action = (dx_c, dy_c)
+                                    action = (bomberman_dx, bomberman_dy)
                                     maximum = expected_value
                             else:
                                 num_monster_options = 0  # number of options for monster actions
@@ -192,11 +189,11 @@ class TestCharacter(CharacterEntity):
                                                                                                        monster_dy,
                                                                                                        wrld,
                                                                                                        depth)
-                                dist_to_best = self.manhattan_dist((c.x + dx_c, c.y + dy_c), self.bestmove)
+                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.bestmove)
                                 expected_value = monster_action_sum / num_monster_options - dist_to_best
                                 # Update expected value if new max found
                                 if expected_value > maximum:
-                                    action = (dx_c, dy_c)
+                                    action = (bomberman_dx, bomberman_dy)
                                     maximum = expected_value
         return action, maximum
 
@@ -211,10 +208,6 @@ class TestCharacter(CharacterEntity):
 
     # Bomberman agent wants to MAXIMIZE score
     def expectimax_event_value(self, wrld, events, depth):
-        # go through the event list to see if the wrld is terminated
-        # Event.tpe: the type of the event. It is one of Event.BOMB_HIT_WALL,
-        # Event.BOMB_HIT_MONSTER, Event.BOMB_HIT_CHARACTER,
-        # Event.CHARACTER_KILLED_BY_MONSTER, Event.CHARACTER_FOUND_EXIT.
         for event in events:
             if event.tpe == event.BOMB_HIT_CHARACTER or event.tpe == event.CHARACTER_KILLED_BY_MONSTER:
                 # bomberman died, return worst value
@@ -228,10 +221,7 @@ class TestCharacter(CharacterEntity):
 
         return self.expectimax_argmax(wrld, depth)[1]
 
-    # param: wrld
-    # def:
-    #   wrld
-    # return: evaluation value
+    # Evaluation function for a given world state. Returns the value of the state
     def evaluation(self, wrld):
         c = next(iter(wrld.characters.values()))
         c = c[0]
