@@ -8,7 +8,6 @@ from colorama import Fore, Back
 import heapq
 import math
 
-infinity = math.inf
 
 class PriorityQueue:
     def __init__(self):
@@ -22,6 +21,7 @@ class PriorityQueue:
 
     def get(self):
         return heapq.heappop(self.elements)[1]
+
 
 class TestCharacter(CharacterEntity):
 
@@ -39,7 +39,7 @@ class TestCharacter(CharacterEntity):
         # Set best move if there is a path to the exit
         self.set_best_node(next_node)
 
-        # Always place bomb to maximize points, routes, and to kill monsters
+        # Place bomb to maximize available routes and kill monsters
         self.place_bomb()
 
         # move to the node chosen by expectimax
@@ -50,25 +50,21 @@ class TestCharacter(CharacterEntity):
 
     def set_best_node(self, next_node):
         if next_node is not None:
-            self.bestmove = next_node[0]
+            self.best_action = next_node[0]
 
-    def empty_cell_neighbors(self, node, wrld):
-        # List of empty cells
-        cells = []
-        # Go through neighboring cells
+    def get_empty_neighbors(self, node, wrld):
+        neighbors = []
         for dx in [-1, 0, 1]:
             # check bounds
             if (node[0] + dx >= 0) and (node[0] + dx < wrld.width()):
                 for dy in [-1, 0, 1]:
                     # check bounds
                     if (node[1] + dy >= 0) and (node[1] + dy < wrld.height()):
-                        # Is this cell safe?
+                        # see if empty
                         if wrld.exit_at(node[0] + dx, node[1] + dy) or wrld.empty_at(node[0] + dx, node[1] + dy):
-                            # Yes
                             if not (dx is 0 and dy is 0):
-                                cells.append((node[0] + dx, node[1] + dy))
-        # All done
-        return cells
+                                neighbors.append((node[0] + dx, node[1] + dy))
+        return neighbors
 
     # manhattan distance from a to b
     def manhattan_dist(self, a, b):
@@ -91,7 +87,7 @@ class TestCharacter(CharacterEntity):
             if current == goal:
                 break
 
-            for next in self.empty_cell_neighbors(current, wrld):
+            for next in self.get_empty_neighbors(current, wrld):
                 new_cost = cost_so_far[current] + 1
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
@@ -100,14 +96,12 @@ class TestCharacter(CharacterEntity):
                     came_from[next] = current
 
         min = math.inf
-        # can goal be found
         for next in came_from:
             dis_to_goal = self.manhattan_dist(next, goal)
             if dis_to_goal < min:
                 min = dis_to_goal
                 min_to_exit = next
         if next == goal:
-            # goal found
             while came_from[next] is not None:
                 self.set_cell_color(next[0], next[1], Fore.RED + Back.RED)
                 if came_from[next] == start:
@@ -127,11 +121,9 @@ class TestCharacter(CharacterEntity):
     # Return the coordinates of the next node to go through
     def expectimax_argmax(self, wrld, depth):
         action = (0, 0)
-        maximum = -infinity
-
-        bomberman = next(iter(wrld.characters.values()))  # get the character position in the wrld
+        maximum = -math.inf
+        bomberman = next(iter(wrld.characters.values()))
         bomberman = bomberman[0]
-
         monster_list = wrld.monsters.values()
 
         no_monster = 0
@@ -148,30 +140,28 @@ class TestCharacter(CharacterEntity):
             else:
                 monster = monster1
 
-        # Go through the possible 9-moves of the character
-        # Loop through delta x
+        # look at all bomberman actions
         for bomberman_dx in [-1, 0, 1]:
-            # Avoid out-of-bound indexing
+            # check bounds
             if (bomberman.x + bomberman_dx >= 0) and (bomberman.x + bomberman_dx < wrld.width()):
-                # Loop through delta y
                 for bomberman_dy in [-1, 0, 1]:
-                    # Avoid out-of-bound indexing
+                    # check bounds
                     if (bomberman.y + bomberman_dy >= 0) and (bomberman.y + bomberman_dy < wrld.height()):
-                        # No need to check impossible moves
+                        # dont need to check moves that go into walls
                         if not wrld.wall_at(bomberman.x + bomberman_dx, bomberman.y + bomberman_dy):
                             # Set move in wrld
                             bomberman.move(bomberman_dx, bomberman_dy)
                             if no_monster:
                                 (new_wrld, new_events) = wrld.next()
-                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.bestmove)
+                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.best_action)
                                 expected_value = self.expectimax_event_value(new_wrld, new_events, depth + 1)
                                 expected_value -= dist_to_best
                                 if expected_value > maximum:
                                     action = (bomberman_dx, bomberman_dy)
                                     maximum = expected_value
                             else:
-                                num_monster_options = 0  # number of options for monster actions
-                                monster_action_sum = 0  # sum of all monster actions value
+                                num_monster_options = 0
+                                monster_action_sum = 0
 
                                 # check all monster moves
                                 for monster_dx in [-1, 0, 1]:
@@ -189,7 +179,7 @@ class TestCharacter(CharacterEntity):
                                                                                                        monster_dy,
                                                                                                        wrld,
                                                                                                        depth)
-                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.bestmove)
+                                dist_to_best = self.manhattan_dist((bomberman.x + bomberman_dx, bomberman.y + bomberman_dy), self.best_action)
                                 expected_value = monster_action_sum / num_monster_options - dist_to_best
                                 # Update expected value if new max found
                                 if expected_value > maximum:
@@ -208,6 +198,7 @@ class TestCharacter(CharacterEntity):
 
     # Bomberman agent wants to MAXIMIZE score
     def expectimax_event_value(self, wrld, events, depth):
+        # If win or death event occur, return
         for event in events:
             if event.tpe == event.BOMB_HIT_CHARACTER or event.tpe == event.CHARACTER_KILLED_BY_MONSTER:
                 # bomberman died, return worst value
@@ -217,20 +208,19 @@ class TestCharacter(CharacterEntity):
                 return self.best
         if depth >= self.max_depth:
             # If depth reached, return evaluation
-            return self.evaluation(wrld)
-
+            return self.evaluate(wrld)
         return self.expectimax_argmax(wrld, depth)[1]
 
     # Evaluation function for a given world state. Returns the value of the state
-    def evaluation(self, wrld):
-        c = next(iter(wrld.characters.values()))
-        c = c[0]
-        if len(wrld.monsters.values()) == 0: return 0
-        mlist = next(iter(wrld.monsters.values()))
+    def evaluate(self, wrld):
+        bomberman = next(iter(wrld.characters.values()))
+        bomberman = bomberman[0]
         score = 0
-        for m in mlist:
-            distx = abs(c.x - m.x)
-            disty = abs(c.y - m.y)
+        if len(wrld.monsters.values()) == 0: return score
+        monsters = next(iter(wrld.monsters.values()))
+        for monster in monsters:
+            distx = abs(bomberman.x - monster.x)
+            disty = abs(bomberman.y - monster.y)
             if distx <= 2 and disty <= 2:
                 if distx <= 1 and disty <= 1:
                     score -= 100000
